@@ -21,14 +21,21 @@ module HuBoard
 
       get "/settings/:user/trial" do
         @user = params[:user]
-        orgs = gh.user.memberships.orgs("active").body
-        not_admin = orgs.select!{|org| org["role"] == "admin"}.empty?
+
+        account_type = gh.users(@user)["type"]
+        if account_type == "User"
+          is_admin = gh.user["login"] == @user
+        elsif account_type == "Organization"
+          orgs = gh.user.memberships
+          orgs_list = orgs.select{|org| org["role"] == "admin"}
+          is_admin = orgs_list.any?{|org| org["organization"]["login"] == @user }
+        end
 
         query = Queries::CouchCustomer.get(gh.users(@user)["id"], couch)
         plan_doc = QueryHandler.exec(&query)
         customer = account_exists?(plan_doc) ? plan_doc[:rows].first.value : false
 
-        redirect session[:forward_to] if !trial_available?(customer) || not_admin
+        redirect session[:forward_to] && session[:forward_to] = "/" unless trial_available?(customer) && is_admin
         erb :activate_trial
       end
 
@@ -181,10 +188,12 @@ module HuBoard
 
       post "/settings/charge/:id/?" do
         begin
-          repo_user = gh.users(params[:id])
+          repo_owner = gh.users(params[:id])
 
-          docs = couch.customers.findPlanById repo_user["id"]
-          plan_doc = docs.rows.first.value
+          query = Queries::CouchCustomer.get(repo_owner["id"], couch)
+          plan_doc = QueryHandler.exec(&query)
+          plan_doc = account_exists?(plan_doc) ?
+            plan_doc[:rows].first.value : create_new_account(gh.user, repo_owner)
           
           customer = Stripe::Customer.retrieve(plan_doc.id)
           if plan_doc[:trial] && plan_doc.trial != "available"
