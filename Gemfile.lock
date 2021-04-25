@@ -255,7 +255,7 @@ GEM
       pry (>= 0.9.11)
     puma (2.9.0)
       rack (>= 1.1, < 2.0)
-    rack (1.6.0)
+    rack (1.6.13)
     rack-no-www (0.0.2)
     rack-protection (1.5.3)
       rack
